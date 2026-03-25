@@ -2492,6 +2492,8 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
                 });
             }
 
+
+
             if (bottomMargin > 0 && !AndroidUtilities.isSmallScreen()) {
                 Space bottomSpacer = new Space(context);
                 bottomSpacer.setMinimumHeight(AndroidUtilities.dp(bottomMargin));
@@ -10319,4 +10321,5 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
         clearSheets();
         parentLayout = null;
     }
+
 }

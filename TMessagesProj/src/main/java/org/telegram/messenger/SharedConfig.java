@@ -53,9 +53,16 @@ import java.util.Locale;
 public class SharedConfig {
     /**
      * V2: Ping and check time serialized
+     * V3: proxyType and outlineKey added
      */
     private final static int PROXY_SCHEMA_V2 = 2;
-    private final static int PROXY_CURRENT_SCHEMA_VERSION = PROXY_SCHEMA_V2;
+    private final static int PROXY_SCHEMA_V3 = 3;
+    private final static int PROXY_CURRENT_SCHEMA_VERSION = PROXY_SCHEMA_V3;
+
+    /** Proxy type constants shared with ProxySettingsActivity and ConnectionsManager. */
+    public final static int PROXY_TYPE_SOCKS5  = 0;
+    public final static int PROXY_TYPE_MTPROTO = 1;
+    public final static int PROXY_TYPE_OUTLINE = 2;
 
     public final static int PASSCODE_TYPE_PIN = 0,
             PASSCODE_TYPE_PASSWORD = 1;
@@ -380,6 +387,14 @@ public class SharedConfig {
         public String password;
         public String secret;
 
+        /** One of PROXY_TYPE_SOCKS5, PROXY_TYPE_MTPROTO, or PROXY_TYPE_OUTLINE. */
+        public int proxyType;
+        /**
+         * The Outline ss:// access key (including optional ?prefix=… parameter).
+         * Only meaningful when proxyType == PROXY_TYPE_OUTLINE.
+         */
+        public String outlineKey;
+
         public long proxyCheckPingId;
         public long ping;
         public boolean checking;
@@ -404,6 +419,20 @@ public class SharedConfig {
             if (this.secret == null) {
                 this.secret = "";
             }
+            // Derive legacy type: secret present → MTProto, otherwise SOCKS5.
+            this.proxyType = TextUtils.isEmpty(this.secret) ? PROXY_TYPE_SOCKS5 : PROXY_TYPE_MTPROTO;
+            this.outlineKey = "";
+        }
+
+        /** Convenience constructor used when creating an Outline proxy entry. */
+        public ProxyInfo(String outlineKey) {
+            this.address    = "";
+            this.port       = 1080;
+            this.username   = "";
+            this.password   = "";
+            this.secret     = "";
+            this.proxyType  = PROXY_TYPE_OUTLINE;
+            this.outlineKey = outlineKey != null ? outlineKey : "";
         }
 
         public String getLink() {
@@ -1428,11 +1457,13 @@ public class SharedConfig {
             return;
         }
         SharedPreferences preferences = ApplicationLoader.applicationContext.getSharedPreferences("mainconfig", Activity.MODE_PRIVATE);
-        String proxyAddress = preferences.getString("proxy_ip", "");
-        String proxyUsername = preferences.getString("proxy_user", "");
-        String proxyPassword = preferences.getString("proxy_pass", "");
-        String proxySecret = preferences.getString("proxy_secret", "");
-        int proxyPort = preferences.getInt("proxy_port", 1080);
+        String proxyAddress    = preferences.getString("proxy_ip", "");
+        String proxyUsername   = preferences.getString("proxy_user", "");
+        String proxyPassword   = preferences.getString("proxy_pass", "");
+        String proxySecret     = preferences.getString("proxy_secret", "");
+        int    proxyPort       = preferences.getInt("proxy_port", 1080);
+        int    proxyType       = preferences.getInt("proxy_type", PROXY_TYPE_SOCKS5);
+        String proxyOutlineKey = preferences.getString("proxy_outline_key", "");
 
         proxyListLoaded = true;
         proxyList.clear();
@@ -1447,7 +1478,6 @@ public class SharedConfig {
 
                 if (version == PROXY_SCHEMA_V2) {
                     count = data.readInt32(false);
-
                     for (int i = 0; i < count; i++) {
                         ProxyInfo info = new ProxyInfo(
                                 data.readString(false),
@@ -1455,14 +1485,45 @@ public class SharedConfig {
                                 data.readString(false),
                                 data.readString(false),
                                 data.readString(false));
-
-                        info.ping = data.readInt64(false);
+                        info.ping               = data.readInt64(false);
                         info.availableCheckTime = data.readInt64(false);
+                        // proxyType was not stored in V2 — infer from secret field.
+                        info.proxyType  = TextUtils.isEmpty(info.secret) ? PROXY_TYPE_SOCKS5 : PROXY_TYPE_MTPROTO;
+                        info.outlineKey = "";
 
                         proxyList.add(0, info);
                         if (currentProxy == null && !TextUtils.isEmpty(proxyAddress)) {
-                            if (proxyAddress.equals(info.address) && proxyPort == info.port && proxyUsername.equals(info.username) && proxyPassword.equals(info.password)) {
+                            if (proxyAddress.equals(info.address) && proxyPort == info.port
+                                    && proxyUsername.equals(info.username) && proxyPassword.equals(info.password)) {
                                 currentProxy = info;
+                            }
+                        }
+                    }
+                } else if (version == PROXY_SCHEMA_V3) {
+                    count = data.readInt32(false);
+                    for (int i = 0; i < count; i++) {
+                        ProxyInfo info = new ProxyInfo(
+                                data.readString(false),
+                                data.readInt32(false),
+                                data.readString(false),
+                                data.readString(false),
+                                data.readString(false));
+                        info.ping               = data.readInt64(false);
+                        info.availableCheckTime = data.readInt64(false);
+                        info.proxyType          = data.readInt32(false);
+                        info.outlineKey         = data.readString(false);
+
+                        proxyList.add(0, info);
+                        if (currentProxy == null) {
+                            if (info.proxyType == PROXY_TYPE_OUTLINE) {
+                                if (proxyType == PROXY_TYPE_OUTLINE && proxyOutlineKey.equals(info.outlineKey)) {
+                                    currentProxy = info;
+                                }
+                            } else if (!TextUtils.isEmpty(proxyAddress)) {
+                                if (proxyAddress.equals(info.address) && proxyPort == info.port
+                                        && proxyUsername.equals(info.username) && proxyPassword.equals(info.password)) {
+                                    currentProxy = info;
+                                }
                             }
                         }
                     }
@@ -1470,6 +1531,7 @@ public class SharedConfig {
                     FileLog.e("Unknown proxy schema version: " + version);
                 }
             } else {
+                // V1 (no version header)
                 for (int a = 0; a < count; a++) {
                     ProxyInfo info = new ProxyInfo(
                             data.readString(false),
@@ -1477,9 +1539,12 @@ public class SharedConfig {
                             data.readString(false),
                             data.readString(false),
                             data.readString(false));
+                    info.proxyType  = TextUtils.isEmpty(info.secret) ? PROXY_TYPE_SOCKS5 : PROXY_TYPE_MTPROTO;
+                    info.outlineKey = "";
                     proxyList.add(0, info);
                     if (currentProxy == null && !TextUtils.isEmpty(proxyAddress)) {
-                        if (proxyAddress.equals(info.address) && proxyPort == info.port && proxyUsername.equals(info.username) && proxyPassword.equals(info.password)) {
+                        if (proxyAddress.equals(info.address) && proxyPort == info.port
+                                && proxyUsername.equals(info.username) && proxyPassword.equals(info.password)) {
                             currentProxy = info;
                         }
                     }
@@ -1487,9 +1552,14 @@ public class SharedConfig {
             }
             data.cleanup();
         }
-        if (currentProxy == null && !TextUtils.isEmpty(proxyAddress)) {
-            ProxyInfo info = currentProxy = new ProxyInfo(proxyAddress, proxyPort, proxyUsername, proxyPassword, proxySecret);
-            proxyList.add(0, info);
+        if (currentProxy == null) {
+            if (proxyType == PROXY_TYPE_OUTLINE && !TextUtils.isEmpty(proxyOutlineKey)) {
+                ProxyInfo info = currentProxy = new ProxyInfo(proxyOutlineKey);
+                proxyList.add(0, info);
+            } else if (!TextUtils.isEmpty(proxyAddress)) {
+                ProxyInfo info = currentProxy = new ProxyInfo(proxyAddress, proxyPort, proxyUsername, proxyPassword, proxySecret);
+                proxyList.add(0, info);
+            }
         }
     }
 
@@ -1513,14 +1583,16 @@ public class SharedConfig {
         serializedData.writeInt32(count);
         for (int a = count - 1; a >= 0; a--) {
             ProxyInfo info = infoToSerialize.get(a);
-            serializedData.writeString(info.address != null ? info.address : "");
+            serializedData.writeString(info.address    != null ? info.address    : "");
             serializedData.writeInt32(info.port);
-            serializedData.writeString(info.username != null ? info.username : "");
-            serializedData.writeString(info.password != null ? info.password : "");
-            serializedData.writeString(info.secret != null ? info.secret : "");
-
+            serializedData.writeString(info.username   != null ? info.username   : "");
+            serializedData.writeString(info.password   != null ? info.password   : "");
+            serializedData.writeString(info.secret     != null ? info.secret     : "");
             serializedData.writeInt64(info.ping);
             serializedData.writeInt64(info.availableCheckTime);
+            // V3 additions
+            serializedData.writeInt32(info.proxyType);
+            serializedData.writeString(info.outlineKey != null ? info.outlineKey : "");
         }
         SharedPreferences preferences = ApplicationLoader.applicationContext.getSharedPreferences("mainconfig", Activity.MODE_PRIVATE);
         preferences.edit().putString("proxy_list", Base64.encodeToString(serializedData.toByteArray(), Base64.NO_WRAP)).apply();
@@ -1532,7 +1604,13 @@ public class SharedConfig {
         int count = proxyList.size();
         for (int a = 0; a < count; a++) {
             ProxyInfo info = proxyList.get(a);
-            if (proxyInfo.address.equals(info.address) && proxyInfo.port == info.port && proxyInfo.username.equals(info.username) && proxyInfo.password.equals(info.password) && proxyInfo.secret.equals(info.secret)) {
+            if (info.proxyType == PROXY_TYPE_OUTLINE && proxyInfo.proxyType == PROXY_TYPE_OUTLINE) {
+                if (proxyInfo.outlineKey.equals(info.outlineKey)) {
+                    return info;
+                }
+            } else if (proxyInfo.address.equals(info.address) && proxyInfo.port == info.port
+                    && proxyInfo.username.equals(info.username) && proxyInfo.password.equals(info.password)
+                    && proxyInfo.secret.equals(info.secret)) {
                 return info;
             }
         }
@@ -1556,11 +1634,13 @@ public class SharedConfig {
             editor.putString("proxy_user", "");
             editor.putString("proxy_secret", "");
             editor.putInt("proxy_port", 1080);
+            editor.putInt("proxy_type", PROXY_TYPE_SOCKS5);
+            editor.putString("proxy_outline_key", "");
             editor.putBoolean("proxy_enabled", false);
             editor.putBoolean("proxy_enabled_calls", false);
             editor.apply();
             if (enabled) {
-                ConnectionsManager.setProxySettings(false, "", 0, "", "", "");
+                ConnectionsManager.setProxySettings(false, null, 0, "", "", "");
             }
         }
         proxyList.remove(proxyInfo);

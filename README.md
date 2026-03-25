@@ -1,39 +1,156 @@
-## Telegram messenger for Android
+# Linegram
 
-[Telegram](https://telegram.org) is a messaging app with a focus on speed and security. It’s superfast, simple and free.
-This repo contains the official source code for [Telegram App for Android](https://play.google.com/store/apps/details?id=org.telegram.messenger).
+**Linegram** is an unofficial Android client for the [Telegram](https://telegram.org) messaging network, forked from the [official Telegram Android open source release](https://github.com/DrKLO/Telegram).
 
-## Creating your Telegram Application
+The primary goal of this fork is to add **native [Outline](https://getoutline.org) proxy support** directly inside the app — no separate VPN app required.
 
-We welcome all developers to use our API and source code to create applications on our platform.
-There are several things we require from **all developers** for the moment.
+---
 
-1. [**Obtain your own api_id**](https://core.telegram.org/api/obtaining_api_id) for your application.
-2. Please **do not** use the name Telegram for your app — or make sure your users understand that it is unofficial.
-3. Kindly **do not** use our standard logo (white paper plane in a blue circle) as your app's logo.
-3. Please study our [**security guidelines**](https://core.telegram.org/mtproto/security_guidelines) and take good care of your users' data and privacy.
-4. Please remember to publish **your** code too in order to comply with the licences.
+## Key Feature: Built-in Outline Proxy
 
-### API, Protocol documentation
+Outline is an open-source proxy protocol based on **Shadowsocks AEAD** with optional prefix padding (`ss://` access keys). It is designed to be resistant to deep-packet inspection (DPI) and censorship.
 
-Telegram API manuals: https://core.telegram.org/api
+### How it works in Linegram
 
-MTproto protocol manuals: https://core.telegram.org/mtproto
+```
+Telegram tgnet (C++)
+     │  SOCKS5  →  127.0.0.1:local_port
+     ▼
+MobileProxy (Go / gomobile-bound)
+     │  Shadowsocks AEAD + prefix
+     ▼
+Outline server
+```
 
-### Compilation Guide
+Linegram starts a local SOCKS5 forwarder (via the [Outline SDK `mobileproxy` package](https://github.com/Jigsaw-Code/outline-sdk/tree/main/x/mobileproxy)) on a random loopback port. Telegram's internal networking layer (`tgnet`) then connects through this local SOCKS5 as if it were a normal SOCKS5 proxy — no changes to the C++ networking core were needed.
 
-**Note**: In order to support [reproducible builds](https://core.telegram.org/reproducible-builds), this repo contains dummy release.keystore,  google-services.json and filled variables inside BuildVars.java. Before publishing your own APKs please make sure to replace all these files with your own.
+### Using an Outline key
 
-You will require Android Studio 3.4, Android NDK rev. 20 and Android SDK 8.1
+1. Open **Settings → Privacy and Security → Proxy Settings**
+2. Tap **Add Proxy**
+3. Select the **Outline** tab
+4. Paste your `ss://` access key
+5. Tap ✓ to save, then enable **Use Proxy**
 
-1. Download the Telegram source code from https://github.com/DrKLO/Telegram ( git clone https://github.com/DrKLO/Telegram.git )
-2. Copy your release.keystore into TMessagesProj/config
-3. Fill out RELEASE_KEY_PASSWORD, RELEASE_KEY_ALIAS, RELEASE_STORE_PASSWORD in gradle.properties to access your  release.keystore
-4.  Go to https://console.firebase.google.com/, create two android apps with application IDs org.telegram.messenger and org.telegram.messenger.beta, turn on firebase messaging and download google-services.json, which should be copied to the same folder as TMessagesProj.
-5. Open the project in the Studio (note that it should be opened, NOT imported).
-6. Fill out values in TMessagesProj/src/main/java/org/telegram/messenger/BuildVars.java – there’s a link for each of the variables showing where and which data to obtain.
-7. You are ready to compile Telegram.
+The key can be obtained from any Outline server (self-hosted via [Outline Manager](https://getoutline.org/get-started/) or a shared access key from a trusted provider).
 
-### Localization
+### IPv6 / Happy Eyeballs
 
-We moved all translations to https://translations.telegram.org/en/android/. Please use it.
+Shadowsocks does not produce early TCP RSTs for unreachable IPv6 routes. When the Outline proxy is active, Linegram automatically forces IPv4-only mode to prevent the "Connecting…" stall that would otherwise occur on dual-stack networks. IPv6 is restored when Outline is disabled.
+
+---
+
+## Building from Source
+
+### Prerequisites
+
+| Tool | Version |
+|---|---|
+| Android Studio | Hedgehog or later |
+| NDK | r26d (`26.3.11579264`) |
+| CMake | 3.22.1 |
+| JDK | 17 |
+
+> **Apple Silicon (M1/M2/M3/M4):** NDK r21 ships Intel-only binaries and hangs under Rosetta. Use NDK r26d which provides native arm64 fat binaries.
+
+### Clone and build
+
+```bash
+git clone https://github.com/bkaganovich-stack/linegram.git
+cd linegram
+./gradlew :TMessagesProj_App:assembleAfatDebug
+```
+
+> The debug build targets **x86_64 only** to avoid non-PIC relocation errors in the bundled arm64 ffmpeg prebuilts (compiled with NDK r10e). For a release/arm64 build the ffmpeg libraries need to be recompiled with a modern NDK.
+
+### API credentials (required for distribution)
+
+The repository ships with Telegram's placeholder `APP_ID = 4`.
+**This placeholder must not be used in distributed builds** — it will hit `API_ID_PUBLISHED_FLOOD` limits.
+
+Register your own credentials at **https://my.telegram.org → API development tools** and set them in:
+
+```
+TMessagesProj/src/main/java/org/telegram/messenger/BuildVars.java
+```
+
+```java
+public static int APP_ID = YOUR_API_ID;
+public static String APP_HASH = "your_api_hash";
+```
+
+### Integrating the real Outline library
+
+The repository currently ships **stub classes** (`mobileproxy/Mobileproxy.java`, `mobileproxy/Proxy.java`, `mobileproxy/StreamDialer.java`) that allow the project to compile without the Go bindings. At runtime, they throw `UnsupportedOperationException`.
+
+To enable real Outline proxy functionality:
+
+```bash
+# 1. Install Go
+brew install go
+
+# 2. Install gomobile
+go install golang.org/x/mobile/cmd/gomobile@latest
+$(go env GOPATH)/bin/gomobile init
+
+# 3. Build the AAR
+$(go env GOPATH)/bin/gomobile bind \
+  -target=android \
+  -androidapi 21 \
+  -o TMessagesProj/libs/mobileproxy.aar \
+  github.com/Jigsaw-Code/outline-sdk/x/mobileproxy
+```
+
+Then in `TMessagesProj/build.gradle`, uncomment:
+```gradle
+implementation fileTree(dir: 'libs', include: ['mobileproxy.aar'])
+```
+
+And delete the stub classes:
+```bash
+rm TMessagesProj/src/main/java/mobileproxy/Mobileproxy.java
+rm TMessagesProj/src/main/java/mobileproxy/Proxy.java
+rm TMessagesProj/src/main/java/mobileproxy/StreamDialer.java
+```
+
+---
+
+## Changes vs. upstream Telegram Android
+
+| File | Change |
+|---|---|
+| `SharedConfig.java` | Added `proxyType`, `outlineKey` fields; schema V3 serialization |
+| `OutlineProxyManager.java` | **New** — singleton lifecycle manager for MobileProxy |
+| `mobileproxy/` | **New** — stub classes (replace with real AAR) |
+| `ConnectionsManager.java` | Outline-aware `setProxySettings(ProxyInfo)` overload; IPv4-only strategy |
+| `ProxySettingsActivity.java` | Outline tab with `ss://` key input field |
+| `ProxyListActivity.java` | Outline-aware display, proxy selection, and enable/disable |
+| `LoginActivity.java` | Removed QR-code login screen |
+| `CMakeLists.txt` | Removed `-fno-integrated-as`; removed GNU gas NEON assembly (pixman) |
+| `build.gradle` (both) | NDK r26d; CMake 3.22.1; x86_64-only debug ABI filter |
+
+---
+
+## Legal
+
+### License
+
+This project is a derivative work of Telegram for Android and is distributed under the **GNU General Public License v2.0 or later** — the same license as the upstream project.
+See the [LICENSE](LICENSE) file.
+
+### Third-party notices
+
+See [NOTICE](NOTICE) for full attribution of all third-party components, including:
+- Telegram for Android (GPL v2) — © Nikolai Kudashov & the Telegram team
+- Outline SDK / mobileproxy (Apache 2.0) — © Jigsaw LLC / The Outline Authors
+- ZXing (Apache 2.0)
+
+### Trademark disclaimer
+
+**Linegram** is an independent project and is **not affiliated with, endorsed by, or associated with** Telegram Messenger or Telegram FZ-LLC. "Telegram" is a registered trademark of Telegram FZ-LLC.
+
+The name "Linegram" and the Outline integration are original contributions of this fork. The app icon must be replaced before any public distribution — the Telegram icon and logo are registered trademarks and may not be reused.
+
+### Disclaimer
+
+This software is provided as-is for research and personal use. Use it responsibly and in accordance with the laws of your jurisdiction and the [Telegram API Terms of Service](https://core.telegram.org/api/terms).

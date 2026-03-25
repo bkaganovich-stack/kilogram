@@ -173,7 +173,15 @@ public class ProxyListActivity extends BaseFragment implements NotificationCente
         }
 
         public void setProxy(SharedConfig.ProxyInfo proxyInfo) {
-            textView.setText(proxyInfo.address + ":" + proxyInfo.port);
+            if (proxyInfo.proxyType == SharedConfig.PROXY_TYPE_OUTLINE) {
+                // Show a human-readable label for Outline proxies instead of ":1080"
+                String keyLabel = proxyInfo.outlineKey != null && proxyInfo.outlineKey.length() > 10
+                        ? "Outline: " + proxyInfo.outlineKey.substring(0, 28) + "…"
+                        : "Outline proxy";
+                textView.setText(keyLabel);
+            } else {
+                textView.setText(proxyInfo.address + ":" + proxyInfo.port);
+            }
             currentInfo = proxyInfo;
         }
 
@@ -397,13 +405,14 @@ public class ProxyListActivity extends BaseFragment implements NotificationCente
                         SharedConfig.currentProxy = proxyList.get(0);
 
                         if (!useProxySettings) {
-                            SharedPreferences preferences = MessagesController.getGlobalMainSettings();
                             SharedPreferences.Editor editor = MessagesController.getGlobalMainSettings().edit();
                             editor.putString("proxy_ip", SharedConfig.currentProxy.address);
                             editor.putString("proxy_pass", SharedConfig.currentProxy.password);
                             editor.putString("proxy_user", SharedConfig.currentProxy.username);
                             editor.putInt("proxy_port", SharedConfig.currentProxy.port);
                             editor.putString("proxy_secret", SharedConfig.currentProxy.secret);
+                            editor.putInt("proxy_type", SharedConfig.currentProxy.proxyType);
+                            editor.putString("proxy_outline_key", SharedConfig.currentProxy.outlineKey != null ? SharedConfig.currentProxy.outlineKey : "");
                             editor.commit();
                         }
                     } else {
@@ -431,7 +440,7 @@ public class ProxyListActivity extends BaseFragment implements NotificationCente
                 editor.putBoolean("proxy_enabled", useProxySettings);
                 editor.commit();
 
-                ConnectionsManager.setProxySettings(useProxySettings, SharedConfig.currentProxy.address, SharedConfig.currentProxy.port, SharedConfig.currentProxy.username, SharedConfig.currentProxy.password, SharedConfig.currentProxy.secret);
+                ConnectionsManager.setProxySettings(useProxySettings, SharedConfig.currentProxy);
                 NotificationCenter.getGlobalInstance().removeObserver(ProxyListActivity.this, NotificationCenter.proxySettingsChanged);
                 NotificationCenter.getGlobalInstance().postNotificationName(NotificationCenter.proxySettingsChanged);
                 NotificationCenter.getGlobalInstance().addObserver(ProxyListActivity.this, NotificationCenter.proxySettingsChanged);
@@ -470,6 +479,8 @@ public class ProxyListActivity extends BaseFragment implements NotificationCente
                 editor.putString("proxy_user", info.username);
                 editor.putInt("proxy_port", info.port);
                 editor.putString("proxy_secret", info.secret);
+                editor.putInt("proxy_type", info.proxyType);
+                editor.putString("proxy_outline_key", info.outlineKey != null ? info.outlineKey : "");
                 editor.putBoolean("proxy_enabled", useProxySettings);
                 if (!info.secret.isEmpty()) {
                     useProxyForCalls = false;
@@ -491,7 +502,7 @@ public class ProxyListActivity extends BaseFragment implements NotificationCente
                     TextCheckCell textCheckCell = (TextCheckCell) holder.itemView;
                     textCheckCell.setChecked(true);
                 }
-                ConnectionsManager.setProxySettings(useProxySettings, SharedConfig.currentProxy.address, SharedConfig.currentProxy.port, SharedConfig.currentProxy.username, SharedConfig.currentProxy.password, SharedConfig.currentProxy.secret);
+                ConnectionsManager.setProxySettings(useProxySettings, SharedConfig.currentProxy);
             } else if (position == proxyAddRow) {
                 presentFragment(new ProxySettingsActivity());
             } else if (position == deleteAllRow) {
@@ -719,6 +730,10 @@ public class ProxyListActivity extends BaseFragment implements NotificationCente
         for (int a = 0, count = proxyList.size(); a < count; a++) {
             final SharedConfig.ProxyInfo proxyInfo = proxyList.get(a);
             if (proxyInfo.checking || SystemClock.elapsedRealtime() - proxyInfo.availableCheckTime < 2 * 60 * 1000) {
+                continue;
+            }
+            // Outline proxies have no pingable SOCKS5 address — skip the native ping check.
+            if (proxyInfo.proxyType == SharedConfig.PROXY_TYPE_OUTLINE) {
                 continue;
             }
             proxyInfo.checking = true;

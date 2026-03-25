@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="AppName">Telegram</string>
-    <string name="AppNameBeta">Telegram Beta</string>
+    <string name="AppName">Linegram</string>
+    <string name="AppNameBeta">Linegram Beta</string>
     <string name="LanguageName">English</string>
     <string name="English">English</string>
     <string name="LanguageNameInEnglish">English</string>
@@ -2678,6 +2678,11 @@
     <string name="DistanceUnitsMiles">Miles</string>
     <string name="AuthAnotherClient">Scan QR Code</string>
     <string name="AuthAnotherClientScan">Scan QR Code</string>
+    <string name="LoginByQr">Log In by QR Code</string>
+    <string name="LoginByQrTitle">Log In by QR Code</string>
+    <string name="LoginByQrSubtitle">Open Telegram on another device, go to Settings → Devices → Link Desktop Device and scan this code</string>
+    <string name="LoginByQrBack">Use Phone Number</string>
+    <string name="LoginByQrWaiting">Waiting for scan…</string>
     <string name="AuthAnotherClientNotFound">No auth token found</string>
     <string name="AuthAnotherClientOk">Auth successfull</string>
     <string name="AuthAnotherClientDownloadClientUrl">https://getdesktop.telegram.org/</string>

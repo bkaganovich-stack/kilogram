@@ -5,6 +5,7 @@ apply plugin: 'com.android.library'
 repositories {
     mavenCentral()
     google()
+    maven { url 'https://jitpack.io' }
 }
 
 configurations {
@@ -69,13 +70,23 @@ dependencies {
     implementation 'com.google.android.recaptcha:recaptcha:18.7.1'
 
     coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.1.5'
+
+    // Outline proxy support via MobileProxy (Shadowsocks AEAD + prefix padding).
+    //
+    // Stub Java classes (mobileproxy/*.java) are included in the source tree so the
+    // project compiles without the real library. To activate Outline at runtime:
+    //   1. Install Go and gomobile: go install golang.org/x/mobile/cmd/gomobile@latest
+    //   2. Run: gomobile bind -target=android github.com/Jigsaw-Code/outline-sdk/x/mobileproxy
+    //   3. Place the generated mobileproxy.aar into TMessagesProj/libs/
+    //   4. Uncomment the line below and delete TMessagesProj/src/main/java/mobileproxy/*.java
+    // implementation fileTree(dir: 'libs', include: ['mobileproxy.aar'])
 }
 
 def isWindows = String.valueOf(DefaultNativePlatform.currentOperatingSystem.toFamilyName() == OperatingSystemFamily.WINDOWS)
 android {
     compileSdkVersion 35
     buildToolsVersion '35.0.0'
-    ndkVersion "21.4.7075529" // 26.3.11579264
+    ndkVersion "26.3.11579264"
 
     sourceSets.main.jniLibs.srcDirs = ['./jni/']
 
@@ -109,7 +120,7 @@ android {
 
         externalNativeBuild {
             cmake {
-                version '3.10.2'
+                version '3.22.1'
                 arguments '-DANDROID_STL=c++_static', '-DANDROID_PLATFORM=android-21' //, '-DANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES=ON'
             }
         }
@@ -131,6 +142,9 @@ android {
             buildConfigField "boolean", "BUNDLE", "false"
             buildConfigField "boolean", "BUILD_HOST_IS_WINDOWS", isWindows
             buildConfigField "int", "VERSION_NUM", "0"
+            ndk {
+                abiFilters 'arm64-v8a', 'x86_64'
+            }
         }
 
         HA_private {

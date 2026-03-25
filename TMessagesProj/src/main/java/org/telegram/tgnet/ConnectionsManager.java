@@ -40,6 +40,7 @@ import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.MessagesController;
 import org.telegram.messenger.NotificationCenter;
 import org.telegram.messenger.PushListenerController;
+import org.telegram.messenger.OutlineProxyManager;
 import org.telegram.messenger.SharedConfig;
 import org.telegram.messenger.StatsController;
 import org.telegram.messenger.UserConfig;
@@ -609,14 +610,32 @@ public class ConnectionsManager extends BaseController {
 
     public void init(int version, int layer, int apiId, String deviceModel, String systemVersion, String appVersion, String langCode, String systemLangCode, String configPath, String logPath, String regId, String cFingerprint, int timezoneOffset, long userId, boolean userPremium, boolean enablePushConnection) {
         SharedPreferences preferences = ApplicationLoader.applicationContext.getSharedPreferences("mainconfig", Activity.MODE_PRIVATE);
-        String proxyAddress = preferences.getString("proxy_ip", "");
-        String proxyUsername = preferences.getString("proxy_user", "");
-        String proxyPassword = preferences.getString("proxy_pass", "");
-        String proxySecret = preferences.getString("proxy_secret", "");
-        int proxyPort = preferences.getInt("proxy_port", 1080);
+        String proxyAddress    = preferences.getString("proxy_ip", "");
+        String proxyUsername   = preferences.getString("proxy_user", "");
+        String proxyPassword   = preferences.getString("proxy_pass", "");
+        String proxySecret     = preferences.getString("proxy_secret", "");
+        int    proxyPort       = preferences.getInt("proxy_port", 1080);
+        int    proxyType       = preferences.getInt("proxy_type", SharedConfig.PROXY_TYPE_SOCKS5);
+        String proxyOutlineKey = preferences.getString("proxy_outline_key", "");
 
-        if (preferences.getBoolean("proxy_enabled", false) && !TextUtils.isEmpty(proxyAddress)) {
-            native_setProxySettings(currentAccount, proxyAddress, proxyPort, proxyUsername, proxyPassword, proxySecret);
+        if (preferences.getBoolean("proxy_enabled", false)) {
+            if (proxyType == SharedConfig.PROXY_TYPE_OUTLINE && !TextUtils.isEmpty(proxyOutlineKey)) {
+                // Start Outline forwarder on a background thread; native init proceeds
+                // normally and will connect once the forwarder is ready.
+                final int accountIdx = currentAccount;
+                final String key = proxyOutlineKey;
+                Utilities.stageQueue.postRunnable(() -> {
+                    try {
+                        int localPort = OutlineProxyManager.getInstance().startProxy(key);
+                        native_setProxySettings(accountIdx, "127.0.0.1", localPort, "", "", "");
+                        native_setIpStrategy(accountIdx, USE_IPV4_ONLY);
+                    } catch (Exception e) {
+                        FileLog.e("OutlineProxy: failed to start on init", e);
+                    }
+                });
+            } else if (!TextUtils.isEmpty(proxyAddress)) {
+                native_setProxySettings(currentAccount, proxyAddress, proxyPort, proxyUsername, proxyPassword, proxySecret);
+            }
         }
         String installer = "";
         try {
@@ -928,29 +947,107 @@ public class ConnectionsManager extends BaseController {
         KeepAliveJob.startJob();
     }
 
+    /**
+     * Legacy overload kept for call-sites that do not have a ProxyInfo object (e.g.
+     * deleteProxy, disable path).  Treats the proxy as SOCKS5/MTProto depending on
+     * whether {@code secret} is non-empty.
+     */
     public static void setProxySettings(boolean enabled, String address, int port, String username, String password, String secret) {
-        if (address == null) {
-            address = "";
-        }
-        if (username == null) {
-            username = "";
-        }
-        if (password == null) {
-            password = "";
-        }
-        if (secret == null) {
-            secret = "";
+        if (address == null) address = "";
+        if (username == null) username = "";
+        if (password == null) password = "";
+        if (secret == null) secret = "";
+
+        // If disabling, also stop any running Outline proxy.
+        if (!enabled || TextUtils.isEmpty(address)) {
+            OutlineProxyManager.getInstance().stopProxy();
         }
 
         for (int a = 0; a < UserConfig.MAX_ACCOUNT_COUNT; a++) {
             if (enabled && !TextUtils.isEmpty(address)) {
                 native_setProxySettings(a, address, port, username, password, secret);
+                // Restore normal IP strategy (Happy-Eyeballs) for non-Outline proxy types.
+                ConnectionsManager cm = getInstance(a);
+                native_setIpStrategy(a, cm.getIpStrategy());
             } else {
                 native_setProxySettings(a, "", 1080, "", "", "");
             }
             AccountInstance accountInstance = AccountInstance.getInstance(a);
             if (accountInstance.getUserConfig().isClientActivated()) {
                 accountInstance.getMessagesController().checkPromoInfo(true);
+            }
+        }
+    }
+
+    /**
+     * Primary overload used by ProxySettingsActivity.  Handles all three proxy
+     * types: SOCKS5, MTProto, and Outline.
+     *
+     * For Outline, this method:
+     *   1. Starts (or reuses) a local SOCKS5 forwarder via OutlineProxyManager.
+     *   2. Points tgnet at 127.0.0.1:localPort with no credentials.
+     *   3. Forces USE_IPV4_ONLY to prevent Happy-Eyeballs from stalling on IPv6
+     *      routes that Shadowsocks cannot fail-fast on.
+     */
+    public static void setProxySettings(boolean enabled, SharedConfig.ProxyInfo proxyInfo) {
+        if (proxyInfo == null || !enabled) {
+            OutlineProxyManager.getInstance().stopProxy();
+            for (int a = 0; a < UserConfig.MAX_ACCOUNT_COUNT; a++) {
+                native_setProxySettings(a, "", 1080, "", "", "");
+                ConnectionsManager cm = getInstance(a);
+                native_setIpStrategy(a, cm.getIpStrategy());
+                AccountInstance accountInstance = AccountInstance.getInstance(a);
+                if (accountInstance.getUserConfig().isClientActivated()) {
+                    accountInstance.getMessagesController().checkPromoInfo(true);
+                }
+            }
+            return;
+        }
+
+        if (proxyInfo.proxyType == SharedConfig.PROXY_TYPE_OUTLINE) {
+            // Start the local SOCKS5 forwarder on a background thread to avoid
+            // blocking the UI, then switch tgnet over once the port is known.
+            final String outlineKey = proxyInfo.outlineKey;
+            Utilities.stageQueue.postRunnable(() -> {
+                try {
+                    int localPort = OutlineProxyManager.getInstance().startProxy(outlineKey);
+                    for (int a = 0; a < UserConfig.MAX_ACCOUNT_COUNT; a++) {
+                        // No username/password — the local SOCKS5 forwarder is unauthenticated.
+                        native_setProxySettings(a, "127.0.0.1", localPort, "", "", "");
+                        // Force IPv4-only to avoid Happy-Eyeballs stalling:
+                        // Shadowsocks does not produce early TCP RSTs for unreachable IPv6
+                        // routes, so disabling local IPv6 attempts prevents a multi-second
+                        // freeze in the "Connecting…" state.
+                        native_setIpStrategy(a, USE_IPV4_ONLY);
+                        AccountInstance accountInstance = AccountInstance.getInstance(a);
+                        if (accountInstance.getUserConfig().isClientActivated()) {
+                            accountInstance.getMessagesController().checkPromoInfo(true);
+                        }
+                    }
+                } catch (Exception e) {
+                    FileLog.e("OutlineProxy: failed to start local SOCKS5 forwarder", e);
+                }
+            });
+        } else {
+            // Standard SOCKS5 or MTProto path — stop any Outline proxy that may be running.
+            OutlineProxyManager.getInstance().stopProxy();
+            String address  = proxyInfo.address  != null ? proxyInfo.address  : "";
+            String username = proxyInfo.username  != null ? proxyInfo.username : "";
+            String password = proxyInfo.password  != null ? proxyInfo.password : "";
+            String secret   = proxyInfo.secret    != null ? proxyInfo.secret   : "";
+            for (int a = 0; a < UserConfig.MAX_ACCOUNT_COUNT; a++) {
+                if (!TextUtils.isEmpty(address)) {
+                    native_setProxySettings(a, address, proxyInfo.port, username, password, secret);
+                } else {
+                    native_setProxySettings(a, "", 1080, "", "", "");
+                }
+                // Restore normal IP strategy for non-Outline proxies.
+                ConnectionsManager cm = getInstance(a);
+                native_setIpStrategy(a, cm.getIpStrategy());
+                AccountInstance accountInstance = AccountInstance.getInstance(a);
+                if (accountInstance.getUserConfig().isClientActivated()) {
+                    accountInstance.getMessagesController().checkPromoInfo(true);
+                }
             }
         }
     }

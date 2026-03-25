@@ -13,3 +13,6 @@ TMessagesProj_App/afat/
 TMessagesProj_AppHockeyApp/afat/
 TMessagesProj_AppStandalone/afat/
 TMessagesProj_AppHuawei/afat/
+*.a.bak
+TMessagesProj/libs/*.aar
+TMessagesProj_App/build/outputs/
