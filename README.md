@@ -1,6 +1,6 @@
-# Linegram
+# Kilogram
 
-**Linegram** is an unofficial Android client for the [Telegram](https://telegram.org) messaging network, forked from the [official Telegram Android open source release](https://github.com/DrKLO/Telegram).
+**Kilogram** is an unofficial Android client for the [Telegram](https://telegram.org) messaging network, forked from the [official Telegram Android open source release](https://github.com/DrKLO/Telegram).
 
 The primary goal of this fork is to add **native [Outline](https://getoutline.org) proxy support** directly inside the app — no separate VPN app required.
 
@@ -10,7 +10,7 @@ The primary goal of this fork is to add **native [Outline](https://getoutline.or
 
 Outline is an open-source proxy protocol based on **Shadowsocks AEAD** with optional prefix padding (`ss://` access keys). It is designed to be resistant to deep-packet inspection (DPI) and censorship.
 
-### How it works in Linegram
+### How it works in Kilogram
 
 ```
 Telegram tgnet (C++)
@@ -22,7 +22,7 @@ MobileProxy (Go / gomobile-bound)
 Outline server
 ```
 
-Linegram starts a local SOCKS5 forwarder (via the [Outline SDK `mobileproxy` package](https://github.com/Jigsaw-Code/outline-sdk/tree/main/x/mobileproxy)) on a random loopback port. Telegram's internal networking layer (`tgnet`) then connects through this local SOCKS5 as if it were a normal SOCKS5 proxy — no changes to the C++ networking core were needed.
+Kilogram starts a local SOCKS5 forwarder (via the [Outline SDK `mobileproxy` package](https://github.com/Jigsaw-Code/outline-sdk/tree/main/x/mobileproxy)) on a random loopback port. Telegram's internal networking layer (`tgnet`) then connects through this local SOCKS5 as if it were a normal SOCKS5 proxy — no changes to the C++ networking core were needed.
 
 ### Using an Outline key
 
@@ -36,7 +36,7 @@ The key can be obtained from any Outline server (self-hosted via [Outline Manage
 
 ### IPv6 / Happy Eyeballs
 
-Shadowsocks does not produce early TCP RSTs for unreachable IPv6 routes. When the Outline proxy is active, Linegram automatically forces IPv4-only mode to prevent the "Connecting…" stall that would otherwise occur on dual-stack networks. IPv6 is restored when Outline is disabled.
+Shadowsocks does not produce early TCP RSTs for unreachable IPv6 routes. When the Outline proxy is active, Kilogram automatically forces IPv4-only mode to prevent the "Connecting…" stall that would otherwise occur on dual-stack networks. IPv6 is restored when Outline is disabled.
 
 ---
 
@@ -56,8 +56,8 @@ Shadowsocks does not produce early TCP RSTs for unreachable IPv6 routes. When th
 ### Clone and build
 
 ```bash
-git clone https://github.com/bkaganovich-stack/linegram.git
-cd linegram
+git clone https://github.com/bkaganovich-stack/kilogram.git
+cd kilogram
 ./gradlew :TMessagesProj_App:assembleAfatDebug
 ```
 
@@ -147,9 +147,9 @@ See [NOTICE](NOTICE) for full attribution of all third-party components, includi
 
 ### Trademark disclaimer
 
-**Linegram** is an independent project and is **not affiliated with, endorsed by, or associated with** Telegram Messenger or Telegram FZ-LLC. "Telegram" is a registered trademark of Telegram FZ-LLC.
+**Kilogram** is an independent project and is **not affiliated with, endorsed by, or associated with** Telegram Messenger or Telegram FZ-LLC. "Telegram" is a registered trademark of Telegram FZ-LLC.
 
-The name "Linegram" and the Outline integration are original contributions of this fork. The app icon must be replaced before any public distribution — the Telegram icon and logo are registered trademarks and may not be reused.
+The name "Kilogram" and the Outline integration are original contributions of this fork. The app icon must be replaced before any public distribution — the Telegram icon and logo are registered trademarks and may not be reused.
 
 ### Disclaimer
 
