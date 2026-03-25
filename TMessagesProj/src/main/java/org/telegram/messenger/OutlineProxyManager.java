@@ -88,18 +88,17 @@ public class OutlineProxyManager {
 
         stopProxyInternal();
 
-        StreamDialer dialer = Mobileproxy.newStreamDialerFromConfig(outlineKey, null);
+        // Real gomobile API: newStreamDialerFromConfig takes only the config string.
+        StreamDialer dialer = Mobileproxy.newStreamDialerFromConfig(outlineKey);
         activeProxy = Mobileproxy.runProxy("127.0.0.1:0", dialer);
         activeKey   = outlineKey;
 
-        // proxy.address() returns "127.0.0.1:PORT"
-        String addr = activeProxy.address();
-        int colonIdx = addr.lastIndexOf(':');
-        if (colonIdx < 0) {
-            throw new RuntimeException("Unexpected MobileProxy address format: " + addr);
+        // proxy.port() returns the dynamically assigned local port as a long.
+        localPort = (int) activeProxy.port();
+        if (localPort <= 0) {
+            throw new RuntimeException("MobileProxy returned invalid port: " + localPort);
         }
-        localPort = Integer.parseInt(addr.substring(colonIdx + 1));
-        FileLog.d("OutlineProxyManager: local SOCKS5 started on port " + localPort);
+        FileLog.d("OutlineProxyManager: local SOCKS5 started on " + activeProxy.address());
         return localPort;
     }
 

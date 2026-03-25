@@ -15,4 +15,5 @@ TMessagesProj_AppStandalone/afat/
 TMessagesProj_AppHuawei/afat/
 *.a.bak
 TMessagesProj/libs/*.aar
+!TMessagesProj/libs/mobileproxy.aar
 TMessagesProj_App/build/outputs/
