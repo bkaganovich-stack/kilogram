@@ -81,6 +81,7 @@ import org.telegram.ui.Components.RLottieImageView;
 import org.telegram.ui.Components.ScaleStateListAnimator;
 import org.telegram.ui.Components.SimpleThemeDescription;
 import org.telegram.ui.Components.voip.CellFlickerDrawable;
+import org.telegram.ui.ProxyListActivity;
 import org.telegram.ui.ProxySettingsActivity;
 
 import java.util.ArrayList;
@@ -400,7 +401,7 @@ public class IntroActivity extends BaseFragment implements NotificationCenter.No
         proxySetupButton.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlueText4));
         proxySetupButton.setPadding(dp(12), dp(6), dp(12), dp(6));
         proxySetupButton.setCompoundDrawablePadding(dp(4));
-        proxySetupButton.setOnClickListener(v -> presentFragment(new ProxySettingsActivity()));
+        proxySetupButton.setOnClickListener(v -> presentFragment(new ProxyListActivity()));
         frameContainerView.addView(proxySetupButton,
                 LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT,
                         Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL, 0, 0, 0, 52));
