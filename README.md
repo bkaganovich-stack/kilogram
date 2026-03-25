@@ -61,7 +61,7 @@ cd kilogram
 ./gradlew :TMessagesProj_App:assembleAfatDebug
 ```
 
-> The debug build targets **x86_64 only** to avoid non-PIC relocation errors in the bundled arm64 ffmpeg prebuilts (compiled with NDK r10e). For a release/arm64 build the ffmpeg libraries need to be recompiled with a modern NDK.
+> The debug build targets **arm64-v8a + x86_64**. The `afat` release flavor builds all four ABIs (armeabi-v7a, arm64-v8a, x86, x86_64).
 
 ### API credentials (required for distribution)
 
