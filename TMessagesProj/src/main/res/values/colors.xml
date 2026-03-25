@@ -1,5 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <!-- Kilogram app icon background (#0E3A2B matches the dark-green in the icon) -->
+    <color name="kilogram_icon_bg">#0E3A2B</color>
     <color name="divider">#dcdcdc</color>
     <color name="widget_name">#212121</color>
     <color name="widget_badge">#ffffff</color>
