@@ -40,6 +40,7 @@ import android.text.style.ImageSpan;
 import android.util.TypedValue;
 import android.view.Display;
 import android.view.Gravity;
+import android.view.MotionEvent;
 import android.view.TextureView;
 import android.view.View;
 import android.view.ViewGroup;
@@ -294,7 +295,48 @@ public class IntroActivity extends BaseFragment implements NotificationCenter.No
             }
         });
 
-        viewPager = new ViewPager(context);
+        // ── Origram: back-gesture-aware ViewPager ────────────────────────────────
+        // The old androidx.viewpager.widget.ViewPager covers the full screen and
+        // intercepts right-edge swipes (used by Android 10+ back gesture navigation)
+        // as "scroll to next page", preventing the system from calling our
+        // OnBackInvokedCallback. We fix this by yielding touches that start inside
+        // the system back gesture edge zone (~20 dp from the left or right edge).
+        // The ViewPager pages scroll only when the touch starts in the inner area.
+        viewPager = new ViewPager(context) {
+            private static final int BACK_GESTURE_EDGE_DP = 20;
+            private boolean skipTouch = false;
+
+            private boolean isEdgeTouch(MotionEvent ev) {
+                float x = ev.getX();
+                int edgePx = AndroidUtilities.dp(BACK_GESTURE_EDGE_DP);
+                return x <= edgePx || x >= getWidth() - edgePx;
+            }
+
+            @Override
+            public boolean onInterceptTouchEvent(MotionEvent ev) {
+                if (ev.getAction() == MotionEvent.ACTION_DOWN) {
+                    skipTouch = isEdgeTouch(ev);
+                }
+                if (skipTouch) return false;
+                return super.onInterceptTouchEvent(ev);
+            }
+
+            @Override
+            public boolean onTouchEvent(MotionEvent ev) {
+                if (ev.getAction() == MotionEvent.ACTION_DOWN) {
+                    skipTouch = isEdgeTouch(ev);
+                }
+                if (skipTouch) {
+                    if (ev.getAction() == MotionEvent.ACTION_UP ||
+                            ev.getAction() == MotionEvent.ACTION_CANCEL) {
+                        skipTouch = false;
+                    }
+                    return false;
+                }
+                return super.onTouchEvent(ev);
+            }
+        };
+        // ─────────────────────────────────────────────────────────────────────────
         viewPager.setAdapter(new IntroAdapter());
         viewPager.setPageMargin(0);
         viewPager.setOffscreenPageLimit(1);
