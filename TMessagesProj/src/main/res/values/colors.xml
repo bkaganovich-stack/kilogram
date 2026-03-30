@@ -1,7 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Origram app icon background (#38A3DB matches the blue circle in the icon) -->
-    <color name="kilogram_icon_bg">#38A3DB</color>
+    <!-- Origram adaptive icon background: white so the blue circle foreground
+         sits inside a white squircle/circle (giving the white border effect) -->
+    <color name="kilogram_icon_bg">#FFFFFF</color>
     <color name="divider">#dcdcdc</color>
     <color name="widget_name">#212121</color>
     <color name="widget_badge">#ffffff</color>
