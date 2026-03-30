@@ -1,16 +1,16 @@
-# Kilogram
+# Origram
 
-**Kilogram** is an unofficial Android client for the [Telegram](https://telegram.org) messaging network, forked from the [official Telegram Android open source release](https://github.com/DrKLO/Telegram).
+**Origram** is an unofficial Android client for the [Telegram](https://telegram.org) messaging network, forked from the [official Telegram Android open source release](https://github.com/DrKLO/Telegram).
 
 The primary goal of this fork is to add **native [Outline](https://getoutline.org) proxy support** directly inside the app — no separate VPN app required.
 
 ---
 
-## Key Feature: Built-in Outline Proxy
+## Built-in Outline Proxy
 
 Outline is an open-source proxy protocol based on **Shadowsocks AEAD** with optional prefix padding (`ss://` access keys). It is designed to be resistant to deep-packet inspection (DPI) and censorship.
 
-### How it works in Kilogram
+### How it works in Origram
 
 ```
 Telegram tgnet (C++)
@@ -22,7 +22,7 @@ MobileProxy (Go / gomobile-bound)
 Outline server
 ```
 
-Kilogram starts a local SOCKS5 forwarder (via the [Outline SDK `mobileproxy` package](https://github.com/Jigsaw-Code/outline-sdk/tree/main/x/mobileproxy)) on a random loopback port. Telegram's internal networking layer (`tgnet`) then connects through this local SOCKS5 as if it were a normal SOCKS5 proxy — no changes to the C++ networking core were needed.
+Origram starts a local SOCKS5 forwarder (via the [Outline SDK `mobileproxy` package](https://github.com/Jigsaw-Code/outline-sdk/tree/main/x/mobileproxy)) on a random loopback port. Telegram's internal networking layer (`tgnet`) then connects through this local SOCKS5 as if it were a normal SOCKS5 proxy — no changes to the C++ networking core were needed.
 
 ### Using an Outline key
 
