@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <color name="kilogram_icon_bg">#FFFFFF</color>
     <color name="divider">#dcdcdc</color>
     <color name="widget_name">#212121</color>
     <color name="widget_badge">#ffffff</color>
