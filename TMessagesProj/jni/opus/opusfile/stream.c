@@ -27,6 +27,11 @@
 #if defined(_WIN32)
 # include <io.h>
 #endif
+/* NDK 26+ does not declare fseeko/ftello for API < 24 targets */
+#if defined(__ANDROID__) && defined(__ANDROID_API__) && __ANDROID_API__ < 24
+# define fseeko fseek
+# define ftello ftell
+#endif
 
 typedef struct OpusMemStream OpusMemStream;
 
