@@ -71,15 +71,10 @@ dependencies {
 
     coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.1.5'
 
-    // Outline proxy support via MobileProxy (Shadowsocks AEAD + prefix padding).
-    //
-    // Stub Java classes (mobileproxy/*.java) are included in the source tree so the
-    // project compiles without the real library. To activate Outline at runtime:
-    //   1. Install Go and gomobile: go install golang.org/x/mobile/cmd/gomobile@latest
-    //   2. Run: gomobile bind -target=android github.com/Jigsaw-Code/outline-sdk/x/mobileproxy
-    //   3. Place the generated mobileproxy.aar into TMessagesProj/libs/
-    //   4. Uncomment the line below and delete TMessagesProj/src/main/java/mobileproxy/*.java
-    // implementation fileTree(dir: 'libs', include: ['mobileproxy.aar'])
+    // Built from golang.getoutline.org/sdk/x/mobileproxy via:
+    //   gomobile bind -target=android -androidapi=21 -o TMessagesProj/libs/mobileproxy.aar \
+    //     golang.getoutline.org/sdk/x/mobileproxy
+    implementation fileTree(dir: 'libs', include: ['mobileproxy.aar'])
 }
 
 def isWindows = String.valueOf(DefaultNativePlatform.currentOperatingSystem.toFamilyName() == OperatingSystemFamily.WINDOWS)

@@ -81,6 +81,7 @@ import org.telegram.ui.Components.RLottieImageView;
 import org.telegram.ui.Components.ScaleStateListAnimator;
 import org.telegram.ui.Components.SimpleThemeDescription;
 import org.telegram.ui.Components.voip.CellFlickerDrawable;
+import org.telegram.ui.ProxyListActivity;
 
 import java.util.ArrayList;
 
@@ -390,6 +391,19 @@ public class IntroActivity extends BaseFragment implements NotificationCenter.No
 
         bottomPages = new BottomPagesView(context, viewPager, 6);
         frameContainerView.addView(bottomPages, LayoutHelper.createFrame(66, 5, Gravity.TOP | Gravity.CENTER_HORIZONTAL, 0, ICON_HEIGHT_DP + 200, 0, 0));
+
+        // ── Origram: proxy/VPN setup link ───────────────────────────────────────
+        TextView proxySetupButton = new TextView(context);
+        proxySetupButton.setGravity(Gravity.CENTER);
+        proxySetupButton.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 14);
+        proxySetupButton.setText(LocaleController.getString(R.string.ProxySettings));
+        proxySetupButton.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlueText4));
+        proxySetupButton.setPadding(dp(12), dp(6), dp(12), dp(6));
+        proxySetupButton.setOnClickListener(v -> presentFragment(new ProxyListActivity()));
+        frameContainerView.addView(proxySetupButton,
+                LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT,
+                        Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL, 0, 0, 0, 52));
+        // ─────────────────────────────────────────────────────────────────────────
 
         switchLanguageTextView = new TextView(context);
         switchLanguageTextView.setGravity(Gravity.CENTER);

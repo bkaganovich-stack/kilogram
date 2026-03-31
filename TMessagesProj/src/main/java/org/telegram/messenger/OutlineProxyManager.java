@@ -1,33 +1,29 @@
 /*
  * Outline proxy support for Telegram Android.
  *
- * This class manages the lifecycle of a local SOCKS5 forwarder that translates
- * Telegram's standard SOCKS5 traffic into Shadowsocks AEAD (with optional
- * prefix-padding) connections as specified by an Outline ss:// access key.
- *
- * Architecture
+ * Architecture (corrected)
  * ──────────────────────────────────────────────────────────────────
  *  Telegram tgnet (C++)
- *       │  SOCKS5 to 127.0.0.1:localPort
+ *       │  SOCKS5 CONNECT to 127.0.0.1:socks5Port
  *       ▼
- *  MobileProxy (Java / gomobile-bound Go)
- *       │  Shadowsocks AEAD + prefix
+ *  Socks5Bridge (Java — this package)
+ *       │  HTTP CONNECT to 127.0.0.1:httpPort
+ *       ▼
+ *  MobileProxy (gomobile-bound Go, mobileproxy.aar)
+ *       │  Shadowsocks AEAD + optional prefix-padding
  *       ▼
  *  Outline server
  *
- * The MobileProxy library must be present as either:
- *   • A JitPack dependency (com.github.Jigsaw-Code:outline-sdk:…), or
- *   • A local AAR in TMessagesProj/libs/mobileproxy.aar generated via:
- *       gomobile bind -target=android github.com/Jigsaw-Code/outline-sdk/x/mobileproxy
+ * Why the bridge?
+ * mobileproxy.RunProxy() starts an HTTP proxy (net/http + HTTP CONNECT handler),
+ * NOT a SOCKS5 server.  tgnet speaks SOCKS5.  Socks5Bridge translates between
+ * the two protocols entirely in Java, with no third-party dependencies.
  *
  * IPv6 / Happy-Eyeballs note
  * ──────────────────────────────────────────────────────────────────
  * Shadowsocks does not produce early TCP RSTs for unreachable IPv6 routes, which
- * causes tgnet's Happy-Eyeballs code to stall in "Connecting…" for several seconds
- * before falling back to IPv4.  When the Outline proxy is active,
- * ConnectionsManager therefore calls native_setIpStrategy with ONLY_IPV4 to
- * disable direct local IPv6 attempts and force all DNS through the SOCKS5 proxy
- * (remote resolution).  The strategy is restored when Outline is deactivated.
+ * causes tgnet's Happy-Eyeballs code to stall.  When Outline is active,
+ * ConnectionsManager calls native_setIpStrategy(USE_IPV4_ONLY).
  */
 package org.telegram.messenger;
 
@@ -38,105 +34,95 @@ import mobileproxy.Proxy;
 import mobileproxy.StreamDialer;
 
 /**
- * Singleton that owns the MobileProxy instance for the Outline proxy type.
- *
+ * Singleton that owns the MobileProxy HTTP proxy + Socks5Bridge instances.
  * All public methods are thread-safe.
  */
 public class OutlineProxyManager {
 
     private static volatile OutlineProxyManager instance;
 
-    private Proxy    activeProxy;
-    private String   activeKey;
-    private int      localPort = -1;
+    /** The HTTP proxy from mobileproxy (Outline Shadowsocks transport). */
+    private Proxy         activeHttpProxy;
+    /** The SOCKS5 bridge that tgnet connects to. */
+    private Socks5Bridge  activeBridge;
+    private String        activeKey;
+    /** Port of the SOCKS5 bridge — what we hand to native_setProxySettings. */
+    private int           socks5Port = -1;
 
     private OutlineProxyManager() {}
 
     public static OutlineProxyManager getInstance() {
         if (instance == null) {
             synchronized (OutlineProxyManager.class) {
-                if (instance == null) {
-                    instance = new OutlineProxyManager();
-                }
+                if (instance == null) instance = new OutlineProxyManager();
             }
         }
         return instance;
     }
 
-    // ──────────────────────────────────────────────────────────────
-    // Public API
-    // ──────────────────────────────────────────────────────────────
+    // ── Public API ────────────────────────────────────────────────────────────
 
     /**
-     * Starts (or restarts) the local SOCKS5 forwarder for the given Outline
-     * access key.  If a proxy with the same key is already running the existing
-     * port is returned immediately without restarting.
+     * Starts (or reuses) the local proxy stack for the given Outline access key.
      *
-     * @param outlineKey  The ss:// access key string (may include ?prefix=…).
-     * @return The local port on 127.0.0.1 that tgnet should connect to.
-     * @throws Exception If MobileProxy fails to bind or parse the config.
+     * @return The SOCKS5 port on 127.0.0.1 for tgnet to connect to.
      */
     public synchronized int startProxy(String outlineKey) throws Exception {
         if (TextUtils.isEmpty(outlineKey)) {
             throw new IllegalArgumentException("Outline access key must not be empty");
         }
-
-        // Avoid a teardown/restart cycle if the key hasn't changed.
-        if (activeProxy != null && outlineKey.equals(activeKey)) {
-            return localPort;
+        if (activeHttpProxy != null && outlineKey.equals(activeKey)) {
+            return socks5Port; // already running with the same key
         }
-
         stopProxyInternal();
 
-        StreamDialer dialer = Mobileproxy.newStreamDialerFromConfig(outlineKey, null);
-        activeProxy = Mobileproxy.runProxy("127.0.0.1:0", dialer);
-        activeKey   = outlineKey;
+        // 1. Create the Shadowsocks StreamDialer from the ss:// key.
+        StreamDialer dialer = Mobileproxy.newStreamDialerFromConfig(outlineKey);
 
-        // proxy.address() returns "127.0.0.1:PORT"
-        String addr = activeProxy.address();
-        int colonIdx = addr.lastIndexOf(':');
-        if (colonIdx < 0) {
-            throw new RuntimeException("Unexpected MobileProxy address format: " + addr);
-        }
-        localPort = Integer.parseInt(addr.substring(colonIdx + 1));
-        FileLog.d("OutlineProxyManager: local SOCKS5 started on port " + localPort);
-        return localPort;
+        // 2. Start the HTTP proxy (mobileproxy).  Port 0 → OS picks a free port.
+        activeHttpProxy = Mobileproxy.runProxy("127.0.0.1:0", dialer);
+        int httpPort = (int) activeHttpProxy.port();
+        FileLog.d("OutlineProxyManager: HTTP proxy on " + activeHttpProxy.address());
+
+        // 3. Start the SOCKS5 bridge pointing at the HTTP proxy.
+        activeBridge = new Socks5Bridge("127.0.0.1", httpPort);
+        socks5Port   = activeBridge.getPort();
+        activeKey    = outlineKey;
+        FileLog.d("OutlineProxyManager: SOCKS5 bridge on 127.0.0.1:" + socks5Port);
+        return socks5Port;
     }
 
-    /**
-     * Stops the running local proxy and resets all state.
-     * Safe to call even when no proxy is running.
-     */
+    /** Stops everything. Safe to call even when nothing is running. */
     public synchronized void stopProxy() {
         stopProxyInternal();
     }
 
-    /** @return The local port currently in use, or -1 if not running. */
+    /** @return SOCKS5 port, or -1 if not running. */
     public synchronized int getLocalPort() {
-        return localPort;
+        return socks5Port;
     }
 
-    /** @return {@code true} if a proxy is currently running. */
     public synchronized boolean isRunning() {
-        return activeProxy != null && localPort > 0;
+        return activeHttpProxy != null && socks5Port > 0;
     }
 
-    // ──────────────────────────────────────────────────────────────
-    // Internal helpers
-    // ──────────────────────────────────────────────────────────────
+    // ── Internal ──────────────────────────────────────────────────────────────
 
     private void stopProxyInternal() {
-        if (activeProxy != null) {
-            try {
-                // timeout = 0 → graceful shutdown without waiting
-                activeProxy.stop(0);
-            } catch (Exception e) {
-                FileLog.e("OutlineProxyManager: error stopping proxy", e);
-            }
-            activeProxy = null;
-            activeKey   = null;
-            localPort   = -1;
-            FileLog.d("OutlineProxyManager: local SOCKS5 stopped");
+        if (activeBridge != null) {
+            activeBridge.stop();
+            activeBridge = null;
         }
+        if (activeHttpProxy != null) {
+            try {
+                activeHttpProxy.stop(0);
+            } catch (Exception e) {
+                FileLog.e("OutlineProxyManager: error stopping HTTP proxy", e);
+            }
+            activeHttpProxy = null;
+        }
+        activeKey  = null;
+        socks5Port = -1;
+        FileLog.d("OutlineProxyManager: stopped");
     }
 }
