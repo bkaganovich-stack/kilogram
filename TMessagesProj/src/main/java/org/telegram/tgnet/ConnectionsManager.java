@@ -1030,6 +1030,29 @@ public class ConnectionsManager extends BaseController {
                             accountInstance.getMessagesController().checkPromoInfo(true);
                         }
                     }
+                    // Origram v0.8.7: Pre-warm DC1 and DC5 through the Outline proxy.
+                    //
+                    // Russian phone numbers are homed on DC1 or DC5. When auth.sendCode
+                    // is sent it targets DEFAULT_DC (the "nearest" DC, typically DC2),
+                    // and Telegram responds with PHONE_MIGRATE_1 or PHONE_MIGRATE_5.
+                    // tgnet must then open a fresh TCP connection to that DC and complete
+                    // an auth-key exchange through the proxy before it can retry the
+                    // request — a 10-30 s stall (or an infinite hang) when the proxy is
+                    // slow or blocked.
+                    //
+                    // Sending a lightweight unauthenticated request to those DCs right
+                    // now forces tgnet to start the TCP connection + auth-key handshake
+                    // in the background.  By the time the user taps "Next", the keys are
+                    // already negotiated and PHONE_MIGRATE completes in milliseconds.
+                    for (int targetDc : new int[]{1, 5}) {
+                        final int fDc = targetDc;
+                        ConnectionsManager.getInstance(0).sendRequest(
+                                new TLRPC.TL_help_getNearestDc(),
+                                (res, err) -> FileLog.d("OutlineProxy: DC" + fDc + " pre-warm done res=" + res + " err=" + err),
+                                null, null,
+                                RequestFlagWithoutLogin | RequestFlagEnableUnauthorized,
+                                fDc, ConnectionTypeGeneric, true);
+                    }
                 } catch (Exception e) {
                     FileLog.e("OutlineProxy: failed to start local SOCKS5 forwarder", e);
                     // Notify the UI so it can show the current (unavailable) state.
