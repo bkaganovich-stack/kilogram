@@ -732,8 +732,13 @@ public class ProxyListActivity extends BaseFragment implements NotificationCente
             if (proxyInfo.checking || SystemClock.elapsedRealtime() - proxyInfo.availableCheckTime < 2 * 60 * 1000) {
                 continue;
             }
-            // Outline proxies have no pingable SOCKS5 address — skip the native ping check.
+            // Outline proxies have no pingable SOCKS5 address — optimistically mark as
+            // available so the UI shows "Available" rather than "Unavailable".
             if (proxyInfo.proxyType == SharedConfig.PROXY_TYPE_OUTLINE) {
+                if (proxyInfo.availableCheckTime == 0) {
+                    proxyInfo.available = true;
+                    proxyInfo.availableCheckTime = SystemClock.elapsedRealtime();
+                }
                 continue;
             }
             proxyInfo.checking = true;
@@ -760,6 +765,11 @@ public class ProxyListActivity extends BaseFragment implements NotificationCente
     @Override
     public void onResume() {
         super.onResume();
+        // Refresh useProxySettings — ProxySettingsActivity may have toggled proxy_enabled
+        // while we were paused, causing this field to go stale.
+        final SharedPreferences preferences = MessagesController.getGlobalMainSettings();
+        useProxySettings = preferences.getBoolean("proxy_enabled", false) && !SharedConfig.proxyList.isEmpty();
+        useProxyForCalls = preferences.getBoolean("proxy_enabled_calls", false);
         if (listAdapter != null) {
             listAdapter.notifyDataSetChanged();
         }

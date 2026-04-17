@@ -1011,6 +1011,12 @@ public class ConnectionsManager extends BaseController {
             Utilities.stageQueue.postRunnable(() -> {
                 try {
                     int localPort = OutlineProxyManager.getInstance().startProxy(outlineKey);
+                    // Mark the proxy as available and refresh the UI now that the port is known.
+                    AndroidUtilities.runOnUIThread(() -> {
+                        proxyInfo.available = true;
+                        proxyInfo.availableCheckTime = android.os.SystemClock.elapsedRealtime();
+                        NotificationCenter.getGlobalInstance().postNotificationName(NotificationCenter.proxySettingsChanged);
+                    });
                     for (int a = 0; a < UserConfig.MAX_ACCOUNT_COUNT; a++) {
                         // No username/password — the local SOCKS5 forwarder is unauthenticated.
                         native_setProxySettings(a, "127.0.0.1", localPort, "", "", "");
@@ -1026,6 +1032,12 @@ public class ConnectionsManager extends BaseController {
                     }
                 } catch (Exception e) {
                     FileLog.e("OutlineProxy: failed to start local SOCKS5 forwarder", e);
+                    // Notify the UI so it can show the current (unavailable) state.
+                    AndroidUtilities.runOnUIThread(() -> {
+                        proxyInfo.available = false;
+                        proxyInfo.availableCheckTime = android.os.SystemClock.elapsedRealtime();
+                        NotificationCenter.getGlobalInstance().postNotificationName(NotificationCenter.proxySettingsChanged);
+                    });
                 }
             });
         } else {
