@@ -3150,6 +3150,16 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
                 req = changePhoneCode;
             } else {
                 ConnectionsManager.getInstance(currentAccount).cleanup(false);
+                // Origram: Re-apply Outline proxy after cleanup — native_cleanUp may clear
+                // the proxy address stored in tgnet, causing auth.sendCode to hang forever
+                // in countries where direct Telegram access is blocked.
+                if (SharedConfig.currentProxy != null) {
+                    SharedPreferences proxyPrefs = ApplicationLoader.applicationContext
+                            .getSharedPreferences("mainconfig", Activity.MODE_PRIVATE);
+                    if (proxyPrefs.getBoolean("proxy_enabled", false)) {
+                        ConnectionsManager.setProxySettings(true, SharedConfig.currentProxy);
+                    }
+                }
 
                 TLRPC.TL_auth_sendCode sendCode = new TLRPC.TL_auth_sendCode();
                 sendCode.api_hash = BuildVars.APP_HASH;
@@ -3232,7 +3242,15 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
                             needShowAlert(getString(R.string.RestorePasswordNoEmailTitle), getString("CodeExpired", R.string.CodeExpired));
                         } else if (error.text.startsWith("FLOOD_WAIT")) {
                             needShowAlert(getString(R.string.RestorePasswordNoEmailTitle), getString("FloodWait", R.string.FloodWait));
-                        } else if (error.code != -1000) {
+                        } else if (error.code == -1000) {
+                            // Origram: network/connection error — most likely the proxy is not
+                            // routing traffic.  Show an actionable message instead of silently
+                            // hiding the progress indicator.
+                            needShowAlert(
+                                    LocaleController.getString(R.string.RestorePasswordNoEmailTitle),
+                                    LocaleController.getString(R.string.ConnectionError)
+                            );
+                        } else {
                             AlertsCreator.processError(currentAccount, error, LoginActivity.this, req, phoneInputData.phoneNumber);
                         }
                     }

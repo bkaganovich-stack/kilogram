@@ -138,6 +138,7 @@
     <string name="PaymentPrecheckoutFailed">Sorry, the payment was cancelled by the bot.</string>
     <string name="PaymentFailed">Sorry, the payment was declined.</string>
     <string name="PaymentConnectionFailed">Unable to reach payment server. Please check your internet connection and try again.</string>
+    <string name="ConnectionError">Connection failed. If you are using a proxy, please make sure it is configured correctly and try again.</string>
     <string name="PaymentConfirmationError">There was an error during payment confirmation.</string>
     <string name="PaymentWarning">Warning</string>
     <string name="PaymentWarningText">Neither Telegram, nor %1$s will have access to your credit card information. Credit card details will be handled only by the payment system, %2$s.\n\nPayments will go directly to the developer of %1$s. Telegram cannot provide any guarantees, so proceed at your own risk. In case of problems, please contact the developer of %1$s or your bank.</string>
