@@ -3260,6 +3260,22 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
                 }
             }), ConnectionsManager.RequestFlagFailOnServerErrors | ConnectionsManager.RequestFlagWithoutLogin | ConnectionsManager.RequestFlagTryDifferentDc | ConnectionsManager.RequestFlagEnableUnauthorized);
             needShowProgress(reqId);
+            // Origram v0.8.6: Watchdog for an indefinite hang that occurs when
+            // auth.sendCode triggers a PHONE_MIGRATE and tgnet must negotiate a
+            // fresh auth-key for the target DC through the Outline proxy.
+            // processRequestQueue has no give-up timeout for queued generic
+            // requests, so the spinner can spin forever when the proxy can't
+            // reach the migration target.  After 30 s we cancel the request and
+            // surface ConnectionError so the user knows to check the proxy.
+            AndroidUtilities.runOnUIThread(() -> {
+                if (!nextPressed) return; // already resolved (success or error)
+                needHideProgress(true);   // cancel the in-flight request
+                nextPressed = false;
+                needShowAlert(
+                        LocaleController.getString(R.string.RestorePasswordNoEmailTitle),
+                        LocaleController.getString(R.string.ConnectionError)
+                );
+            }, 30_000);
         }
 
         private boolean numberFilled;
