@@ -629,6 +629,21 @@ public class ConnectionsManager extends BaseController {
                         int localPort = OutlineProxyManager.getInstance().startProxy(key);
                         native_setProxySettings(accountIdx, "127.0.0.1", localPort, "", "", "");
                         native_setIpStrategy(accountIdx, USE_IPV4_ONLY);
+                        // Origram v0.8.8: pre-warm DC1 and DC5 at app startup so the
+                        // MTProto auth-key exchange is already in flight by the time the
+                        // user reaches the phone-number screen.  Russian numbers trigger
+                        // PHONE_MIGRATE_1; without a pre-existing key the migration adds
+                        // 5–30 s of latency (or hits the watchdog entirely).
+                        FileLog.d("OutlineProxy: init — pre-warming DC1 and DC5");
+                        for (int _dc : new int[]{1, 5}) {
+                            final int _fDc = _dc;
+                            ConnectionsManager.getInstance(accountIdx).sendRequest(
+                                    new TLRPC.TL_help_getNearestDc(),
+                                    (res, err) -> FileLog.d("OutlineProxy: init pre-warm DC" + _fDc + " done, err=" + err),
+                                    null, null,
+                                    RequestFlagWithoutLogin | RequestFlagEnableUnauthorized,
+                                    _fDc, ConnectionTypeGeneric, true);
+                        }
                     } catch (Exception e) {
                         FileLog.e("OutlineProxy: failed to start on init", e);
                     }

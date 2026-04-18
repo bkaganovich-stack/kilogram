@@ -3158,6 +3158,25 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
                             .getSharedPreferences("mainconfig", Activity.MODE_PRIVATE);
                     if (proxyPrefs.getBoolean("proxy_enabled", false)) {
                         ConnectionsManager.setProxySettings(true, SharedConfig.currentProxy);
+                        // Origram v0.8.8: pre-warm DC1 and DC5 DIRECTLY before auth.sendCode.
+                        // setProxySettings() also posts pre-warm runnables, but they land on
+                        // stageQueue AFTER the auth.sendCode runnable (because they are nested
+                        // inside the setProxySettings stageQueue task).  By calling sendRequest
+                        // here — on the calling thread, before sendRequest(auth.sendCode) — we
+                        // guarantee the pre-warm runnables are queued AHEAD of auth.sendCode.
+                        // This gives DC1/DC5 the earliest possible head-start on auth-key
+                        // exchange so that PHONE_MIGRATE_X completes within the timeout window.
+                        if (SharedConfig.currentProxy.proxyType == SharedConfig.PROXY_TYPE_OUTLINE) {
+                            for (int _dc : new int[]{1, 5}) {
+                                final int _fDc = _dc;
+                                ConnectionsManager.getInstance(currentAccount).sendRequest(
+                                        new TLRPC.TL_help_getNearestDc(),
+                                        (res, err) -> FileLog.d("OutlineProxy: pre-login warm DC" + _fDc + " err=" + err),
+                                        null, null,
+                                        ConnectionsManager.RequestFlagWithoutLogin | ConnectionsManager.RequestFlagEnableUnauthorized,
+                                        _fDc, ConnectionsManager.ConnectionTypeGeneric, true);
+                            }
+                        }
                     }
                 }
 
@@ -3260,13 +3279,14 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
                 }
             }), ConnectionsManager.RequestFlagFailOnServerErrors | ConnectionsManager.RequestFlagWithoutLogin | ConnectionsManager.RequestFlagTryDifferentDc | ConnectionsManager.RequestFlagEnableUnauthorized);
             needShowProgress(reqId);
-            // Origram v0.8.6: Watchdog for an indefinite hang that occurs when
+            // Origram v0.8.8: Watchdog for an indefinite hang that occurs when
             // auth.sendCode triggers a PHONE_MIGRATE and tgnet must negotiate a
             // fresh auth-key for the target DC through the Outline proxy.
             // processRequestQueue has no give-up timeout for queued generic
             // requests, so the spinner can spin forever when the proxy can't
-            // reach the migration target.  After 30 s we cancel the request and
-            // surface ConnectionError so the user knows to check the proxy.
+            // reach the migration target.
+            // 60 s gives a slow-but-working Outline proxy enough time to complete
+            // the DC1/DC5 auth-key exchange (typically 5–30 s via Shadowsocks).
             AndroidUtilities.runOnUIThread(() -> {
                 if (!nextPressed) return; // already resolved (success or error)
                 needHideProgress(true);   // cancel the in-flight request
@@ -3275,7 +3295,7 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
                         LocaleController.getString(R.string.RestorePasswordNoEmailTitle),
                         LocaleController.getString(R.string.ConnectionError)
                 );
-            }, 30_000);
+            }, 60_000);
         }
 
         private boolean numberFilled;
