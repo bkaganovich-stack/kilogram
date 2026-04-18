@@ -57,7 +57,7 @@ Shadowsocks does not produce early TCP RSTs for unreachable IPv6 routes. When th
 
 ```bash
 git clone https://github.com/bkaganovich-stack/origram.git
-cd kilogram
+cd origram
 ./gradlew :TMessagesProj_App:assembleAfatDebug
 ```
 
